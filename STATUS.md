@@ -1,8 +1,9 @@
 # FirmGraph — Status & Feature Snapshot
 
-> **Version:** V0.1.0-dev · **As of:** July 2026
+> **Version:** V0.1.0 · **As of:** July 2026 · under git (initial release commit)
 > **One line:** The open evidence layer for firmware — one local command turns a firmware image into a reproducible, prioritized, CRA-mapped evidence pack.
-> **Health:** 61 tests passing · ruff clean · mypy --strict clean · 51 modules · Docker image runs fully air-gapped.
+> **Health:** 62 tests passing · ruff clean · mypy --strict clean · 51 modules · Docker image runs fully air-gapped (incl. read-only firmware mounts).
+> **Clone-and-run:** bundled `examples/demo-firmware.tar` produces 5 real findings on first scan (verified from a fresh `git archive` clone).
 > **Honesty rule:** every row below is marked ✅ working / 🟡 optional-gated / 🔧 tracked. No feature is claimed that isn't real. If this contradicts a slide, this doc wins.
 
 ---

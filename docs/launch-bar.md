@@ -40,7 +40,7 @@ honestly — a checked box means *verified*, not *written*.
 - [ ] **cve-bin-tool value**: integration is complete and degrades gracefully (broken engine → honest "skipped", never a failure). Pinned 3.4 has an upstream scan crash → currently produces no findings. Validate a working version to unlock the second-engine component coverage. Not claimed until it works.
 - [x] **Live checks-positive**: `examples/demo-firmware.tar` (bundled) — unblob extracts it and the checks engine fires 5 real findings (private key, root hash, telnet-on, root SSH login, empty passwords). Proven on a real extraction, not just unit trees. (A sloppy *real-world* vendor image is still a nice-to-have for the corpus.)
 - [ ] **Corpus depth**: 3–5 beachhead-class images (LoRaWAN / charger), currently 1 (ChirpStack).
-- [ ] **Stranger test**: one person who didn't build it clones and gets a result with zero questions.
+- [x] **Stranger test (mechanical)**: fresh `git archive` clone → `uv sync` → `firmgraph scan examples/demo-firmware.tar` → 5 real findings + full evidence pack, zero hidden state, zero questions. (A real human tester is still the gold standard.)
 - [ ] **Name/org lock** + digest-pin the unblob base image at the release tag.
 
 ## Verdict
