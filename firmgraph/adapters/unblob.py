@@ -64,6 +64,11 @@ class UnblobNativeAdapter:
                 capture_output=True,
                 text=True,
                 timeout=self.timeout_s,
+                # unblob writes unblob.log to CWD; run from a writable dir OUTSIDE
+                # the swept extraction dir so (a) a read-only working dir
+                # (firmware mounted -v "$PWD:/work:ro", which we recommend) never
+                # crashes extraction, and (b) the log doesn't inflate file counts.
+                cwd=str(dest.parent),
             )
             output = proc.stdout + proc.stderr
             extra = () if proc.returncode == 0 else (f"unblob exit code {proc.returncode}",)
