@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FirmGraph — {{ manifest.scan_id }}</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; margin: 2rem auto; max-width: 60rem; color: #1a1a1a; }
+  h1 { border-bottom: 2px solid #0a5; padding-bottom: .3rem; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+  th, td { border: 1px solid #ddd; padding: .4rem .6rem; text-align: left; font-size: .9rem; }
+  th { background: #f4f6f5; }
+  .banner { padding: .8rem 1rem; border-radius: 6px; margin: 1rem 0; }
+  .warn { background: #fff3cd; border: 1px solid #e0c060; }
+  .danger { background: #fde8e8; border: 1px solid #d09090; }
+  .sev-critical { color: #b00020; font-weight: 700; }
+  .sev-high { color: #c05000; font-weight: 600; }
+  .sev-medium { color: #8a6d00; }
+  .sev-low { color: #4a6a4a; }
+  footer { margin-top: 2rem; font-size: .8rem; color: #555; border-top: 1px solid #ddd; padding-top: .8rem; }
+  code { background: #f4f4f4; padding: .1rem .3rem; border-radius: 3px; }
+</style>
+</head>
+<body>
+<h1>FirmGraph Scan Report</h1>
+
+{% if stub_stages %}
+<div class="banner warn"><strong>Walking-skeleton build:</strong> stub stages emitting placeholder data: {{ stub_stages | join(", ") }}. This report demonstrates the pipeline, not a security verdict.</div>
+{% endif %}
+{% if failed_stages %}
+<div class="banner danger"><strong>Stage failures (recorded, not hidden):</strong> {{ failed_stages | join(", ") }}.</div>
+{% endif %}
+
+<h2>Scan identity (reproducibility receipt)</h2>
+<table>
+  <tr><th>Scan ID</th><td><code>{{ manifest.scan_id }}</code></td></tr>
+  <tr><th>Image</th><td><code>{{ manifest.image_path }}</code></td></tr>
+  <tr><th>SHA-256</th><td><code>{{ manifest.image_sha256 }}</code></td></tr>
+  <tr><th>Size / format</th><td>{{ manifest.image_size }} bytes · {{ manifest.image_format }}</td></tr>
+  <tr><th>FirmGraph</th><td>{{ manifest.firmgraph_version }}</td></tr>
+  <tr><th>Created</th><td>{{ manifest.created_at }}</td></tr>
+  <tr><th>Tools</th><td>{% for t in manifest.tool_versions %}{{ t.name }} {{ t.version }}{% if not loop.last %} · {% endif %}{% endfor %}</td></tr>
+</table>
+
+{% if extraction %}
+<h2>Extraction — honesty first</h2>
+<table>
+  <tr><th>Method</th><td>{{ extraction.method }}</td></tr>
+  <tr><th>Confidence</th><td><strong>{{ "%.0f" | format(extraction.confidence * 100) }}%</strong></td></tr>
+  <tr><th>Files extracted</th><td>{{ extraction.files_extracted }}</td></tr>
+</table>
+{% if extraction.confidence < 0.5 %}
+<div class="banner danger"><strong>Low extraction confidence.</strong> Findings below are NOT a security verdict — a clean result on unextracted firmware is a false negative, not a safe device.</div>
+{% endif %}
+{% endif %}
+
+{% if top_findings %}
+<h2>Top priorities — act on these first ({{ top_findings | length }})</h2>
+<table>
+  <tr><th>#</th><th>ID</th><th>Priority</th><th>Severity</th><th>Component</th><th>Why it ranks here</th></tr>
+  {% for f in top_findings %}
+  <tr>
+    <td>{{ loop.index }}</td>
+    <td><code>{{ f.finding_id }}</code></td>
+    <td><strong>P{{ f.priority }}</strong></td>
+    <td class="sev-{{ f.severity }}">{{ f.severity }}</td>
+    <td>{{ f.component or "—" }}</td>
+    <td>{{ f.priority_reason }}</td>
+  </tr>
+  {% if explanations.get(f.finding_id) %}
+  <tr><td></td><td colspan="5" style="font-size:.85rem;color:#444;background:#fafcfa;"><em>{{ advisory_label }}:</em> {{ explanations[f.finding_id] }}</td></tr>
+  {% endif %}
+  {% endfor %}
+</table>
+{% endif %}
+
+<h2>Findings ({{ findings | length }})</h2>
+{% if findings %}
+<table>
+  <tr><th>ID</th><th>Priority</th><th>Severity</th><th>Component</th><th>Fix</th><th>KEV</th><th>EPSS</th><th>Reachable</th></tr>
+  {% for f in findings %}
+  <tr>
+    <td><code>{{ f.finding_id }}</code></td>
+    <td title="{{ f.priority_reason }}">P{{ f.priority }}</td>
+    <td class="sev-{{ f.severity }}">{{ f.severity }}</td>
+    <td>{{ f.component or "—" }}</td>
+    <td>{% if f.fix %}{{ f.fix }}{% else %}<strong>no fix available (EOL evidence)</strong>{% endif %}</td>
+    <td>{{ "yes" if f.kev else "—" }}</td>
+    <td>{{ f.epss if f.epss is not none else "—" }}</td>
+    <td>{% if f.reachable is true %}yes{% elif f.reachable is false %}no{% else %}n/a{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No findings recorded by the current pipeline stages.</p>
+{% endif %}
+
+{% if binscan_findings %}
+<h2>Binary-signature findings — cve-bin-tool ({{ binscan_findings | length }})</h2>
+<div class="banner warn">A second, independent engine that fingerprints components inside stripped binaries Syft can't name. Shown <strong>separately and never merged</strong> with the SBOM path — two engines, no false reconciliation.</div>
+<table>
+  <tr><th>ID</th><th>Priority</th><th>Severity</th><th>Component</th><th>Fix</th></tr>
+  {% for f in binscan_findings %}
+  <tr>
+    <td><code>{{ f.finding_id }}</code></td>
+    <td title="{{ f.priority_reason }}">P{{ f.priority }}</td>
+    <td class="sev-{{ f.severity }}">{{ f.severity }}</td>
+    <td>{{ f.component or "—" }}</td>
+    <td>{% if f.fix %}{{ f.fix }}{% else %}<strong>no fix available (EOL evidence)</strong>{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+{% if vex.total %}
+<h2>Exploitability statement (VEX) — drafted, you sign</h2>
+<p>Of <strong>{{ vex.total }}</strong> CVEs:
+  <strong>{{ vex.affected }}</strong> affected ·
+  <strong>{{ vex.not_affected_count }}</strong> not affected ·
+  <strong>{{ vex.under_investigation }}</strong> under investigation.
+  Full OpenVEX + CycloneDX-VEX in <code>evidence-pack/</code> — the machine-readable
+  answer to "which CVEs matter, and why the rest don't".</p>
+{% if vex.not_affected %}
+<table>
+  <tr><th>CVE</th><th>Component</th><th>Assessed not_affected because…</th></tr>
+  {% for na in vex.not_affected %}
+  <tr><td><code>{{ na.id }}</code></td><td>{{ na.component }}</td><td>{{ na.reason }}</td></tr>
+  {% endfor %}
+</table>
+{% endif %}
+{% endif %}
+
+{% if cra_rows %}
+<h2>CRA Annex I mapping (best-effort — not legal advice)</h2>
+<div class="banner warn">{{ cra_disclaimer }}</div>
+<table>
+  <tr><th>Requirement</th><th>Title</th><th>Findings</th><th>Examples</th></tr>
+  {% for row in cra_rows %}
+  <tr>
+    <td><strong>{{ row.ref.req_id }}</strong></td>
+    <td>{{ row.ref.title }}</td>
+    <td>{{ row.count }}</td>
+    <td>{{ row.finding_ids[:3] | join(", ") }}{% if row.count > 3 %} (+{{ row.count - 3 }} more){% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+{% if suppressed %}
+<h2>Suppressed findings ({{ suppressed | length }}) — marked, never deleted</h2>
+<table>
+  <tr><th>ID</th><th>Component</th><th>Suppression reason</th></tr>
+  {% for f in suppressed %}
+  <tr><td><code>{{ f.finding_id }}</code></td><td>{{ f.component or "—" }}</td><td>{{ f.suppression_reason }}</td></tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+<h2>Components ({{ components | length }})</h2>
+{% if components %}
+<table>
+  <tr><th>Name</th><th>Version</th><th>Type</th><th>Provenance</th><th>Confidence</th></tr>
+  {% for c in components %}
+  <tr><td>{{ c.name }}</td><td>{{ c.version or "?" }}</td><td>{{ c.type }}</td><td>{{ c.provenance }}</td><td>{{ "%.2f" | format(c.confidence) }}</td></tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No components recorded by the current pipeline stages.</p>
+{% endif %}
+
+<h2>Stage provenance</h2>
+<table>
+  <tr><th>Stage</th><th>Status</th><th>Duration</th><th>Notes</th></tr>
+  {% for s in manifest.stages %}
+  <tr><td>{{ s.name }}</td><td>{{ s.status }}</td><td>{{ s.duration_ms }} ms</td><td>{{ s.notes | join("; ") }}</td></tr>
+  {% endfor %}
+</table>
+
+<footer>{{ liability }}</footer>
+</body>
+</html>

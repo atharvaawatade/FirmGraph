@@ -1,0 +1,62 @@
+# FirmGraph checks rulepack v1 — deliberately conservative: every rule here is
+# a high-confidence signal. FP suppression is the product; we don't ship noise.
+# The rulepack version travels in the scan manifest (cache- and audit-correct).
+version: v1
+rules:
+  - id: FG-SECRET-001
+    kind: secret
+    severity: critical
+    description: "Private key material shipped in firmware"
+    pattern: '-----BEGIN [A-Z ]*PRIVATE KEY-----'
+    redact: true
+
+  - id: FG-SECRET-002
+    kind: secret
+    severity: high
+    description: "root password hash present in shipped credentials file"
+    file_globs: ["*/etc/shadow", "*/etc/shadow-", "*/etc/passwd", "*/etc/passwd-"]
+    pattern: '(?m)^root:\$[0-9a-zA-Z]+\$[^:\n]*'
+    redact: true
+
+  - id: FG-SECRET-003
+    kind: secret
+    severity: high
+    description: "AWS access key id embedded in firmware"
+    pattern: 'AKIA[0-9A-Z]{16}'
+    redact: true
+
+  - id: FG-SECRET-004
+    kind: secret
+    severity: high
+    description: "Wireless passphrase hardcoded in configuration"
+    file_globs: ["*wpa*.conf", "*hostapd*.conf", "*/etc/config/wireless"]
+    pattern: '(?mi)^\s*(?:wpa_passphrase|psk|key)\s*[=:]\s*\S+'
+    redact: true
+
+  - id: FG-CONFIG-001
+    kind: config
+    severity: high
+    description: "Telnet daemon enabled at boot"
+    file_globs: ["*/etc/inittab", "*/etc/init.d/*", "*/etc/rc*"]
+    pattern: '(?m)^[^#\n]*\btelnetd\b'
+
+  - id: FG-CONFIG-002
+    kind: config
+    severity: high
+    description: "SSH root login permitted"
+    file_globs: ["*sshd_config*"]
+    pattern: '(?mi)^\s*PermitRootLogin\s+yes'
+
+  - id: FG-CONFIG-003
+    kind: config
+    severity: critical
+    description: "SSH login with empty passwords permitted"
+    file_globs: ["*sshd_config*"]
+    pattern: '(?mi)^\s*PermitEmptyPasswords\s+yes'
+
+  - id: FG-CONFIG-004
+    kind: config
+    severity: medium
+    description: "World-writable file under /etc"
+    path_globs: ["*/etc/*"]
+    world_writable: true

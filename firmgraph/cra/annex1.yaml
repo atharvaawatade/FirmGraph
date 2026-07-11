@@ -1,0 +1,24 @@
+# CRA (EU 2024/2847) Annex I essential requirements — short working titles.
+# Paraphrases for mapping display only; the regulation text governs. Every use
+# of this data is labeled "best-effort mapping, not legal advice".
+requirements:
+  # Part I — security requirements
+  - id: "I.2a"
+    title: "Made available without known exploitable vulnerabilities"
+  - id: "I.2b"
+    title: "Secure by default configuration"
+  - id: "I.2d"
+    title: "Protection from unauthorised access (control mechanisms)"
+  - id: "I.2e"
+    title: "Confidentiality of stored/transmitted data (encryption)"
+  - id: "I.2f"
+    title: "Integrity of data, commands and configuration"
+  - id: "I.2j"
+    title: "Limited attack surfaces, including external interfaces"
+  # Part II — vulnerability handling requirements
+  - id: "II.1"
+    title: "Identify and document vulnerabilities and components (incl. SBOM)"
+  - id: "II.2"
+    title: "Address and remediate vulnerabilities without delay"
+  - id: "II.8"
+    title: "Distribute security patches without delay, free of charge"

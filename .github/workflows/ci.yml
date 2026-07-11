@@ -1,0 +1,33 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - name: Sync dependencies
+        run: uv sync --dev
+      - name: Lint
+        run: uv run ruff check firmgraph tests
+      - name: Type-check
+        run: uv run mypy firmgraph
+      - name: Tests (incl. determinism acid test)
+        run: uv run pytest -q
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -f docker/Dockerfile -t firmgraph:ci .
+      - name: Egress test — scan must succeed with no network (nothing phones home)
+        run: |
+          python3 -c "import random; r=random.Random(42); open('demo.bin','wb').write(bytes(r.getrandbits(8) for _ in range(65536)))"
+          docker run --rm --network=none -v "$PWD:/work" firmgraph:ci scan /work/demo.bin -o /work/out -q
+          test -f out/report.html && test -f out/graph.json
