@@ -56,8 +56,14 @@ def parse_grype_document(doc: dict[str, Any]) -> tuple[list[Finding], str]:
                 epss=epss,
             )
         )
+    # DB build date location moved in grype v6: descriptor.db.status.built.
+    # Read the new path first, fall back to the old one, for the determinism
+    # receipt in the scan manifest.
+    db = doc.get("descriptor", {}).get("db", {}) or {}
     db_built = str(
-        (doc.get("descriptor", {}).get("db", {}) or {}).get("built", "unknown")
+        (db.get("status", {}) or {}).get("built")  # grype v6 schema
+        or db.get("built")                          # older grype
+        or "unknown"
     )
     return findings, db_built
 
@@ -87,6 +93,12 @@ class GrypeAdapter:
         env = dict(os.environ)
         env.setdefault("GRYPE_DB_AUTO_UPDATE", "false")  # determinism: explicit refresh only
         env.setdefault("GRYPE_CHECK_FOR_APP_UPDATE", "false")
+        # We DELIBERATELY pin a DB snapshot (baked into the image / user-managed)
+        # and record its build date in the manifest. Grype otherwise hard-refuses
+        # any DB older than 5 days — which would make an air-gapped/offline scan
+        # fail with no way to self-heal. Disabling the age check is what makes the
+        # "works offline" promise durable rather than a 5-day fuse.
+        env.setdefault("GRYPE_DB_VALIDATE_AGE", "false")
         proc = subprocess.run(
             ["grype", f"sbom:{sbom_path}", "-o", "json", "--quiet"],
             capture_output=True,

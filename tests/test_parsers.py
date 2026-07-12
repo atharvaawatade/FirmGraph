@@ -53,9 +53,17 @@ def test_syft_parser_provenance_and_confidence() -> None:
     assert by_name["mystery"].version is None
 
 
+def test_grype_v6_db_built_path() -> None:
+    """grype v6 moved the DB build date to descriptor.db.status.built — the
+    determinism receipt must read it there (regression: was showing 'unknown')."""
+    doc = {"matches": [], "descriptor": {"db": {"status": {"built": "2026-07-11T06:57:59Z"}}}}
+    _, db_built = parse_grype_document(doc)
+    assert db_built == "2026-07-11T06:57:59Z"
+
+
 def test_grype_parser_findings_kev_epss_and_eol() -> None:
     findings, db_built = parse_grype_document(GRYPE_DOC)
-    assert db_built == "2026-07-05T04:00:00Z"
+    assert db_built == "2026-07-05T04:00:00Z"  # old-path fallback still works
     assert len(findings) == 2
     by_id = {f.finding_id: f for f in findings}
 

@@ -2,29 +2,32 @@
 
 **The open evidence layer for firmware.** One command: firmware image in → reproducible security graph, prioritized findings, and audit-ready evidence out. Fully local — your firmware never leaves your machine.
 
-> **Status (V0.1.0-dev):** the full pipeline is real and working end-to-end — extraction (unblob→binwalk, jailed), SBOM (Syft, provenance + confidence), CVE matching (Grype, pinned DB), KEV/EPSS/reachability **prioritization**, secrets/config **checks**, content-addressed **graph + diff**, **CRA Annex I mapping**, **VEX** (OpenVEX + CycloneDX), the **evidence pack**, and an optional AI **explainer**. A 15MB router scans in ~14s with 122 findings, fully air-gapped. 61 tests, ruff + mypy --strict clean.
+> **Status (V0.1.0):** the full pipeline works end-to-end — extraction (unblob→binwalk, jailed), SBOM (Syft, provenance + confidence), CVE matching (Grype, **vulnerability DB baked into the image**), KEV/EPSS/reachability **prioritization**, secrets/config **checks**, content-addressed **graph + diff**, **CRA Annex I mapping**, **VEX** (OpenVEX + CycloneDX), the **evidence pack**, and an optional AI **explainer**. Fully air-gapped, zero DB setup. 62 tests, ruff + mypy --strict clean.
 >
 > 👉 **Full feature + honest-status snapshot: [STATUS.md](STATUS.md)** · limits: [docs/honest-limits.md](docs/honest-limits.md)
 
+## Quickstart — Docker (recommended; CVE matching works air-gapped, no setup)
+
 ```bash
-# the real thing, fully air-gapped:
-docker run --rm --entrypoint grype firmgraph -v fg-cache:/home/unblob/.cache db update   # once, online
-docker run --rm --network=none -v fg-cache:/home/unblob/.cache -v "$PWD:/work" \
-  firmgraph scan /work/firmware.bin -o /work/out
+docker build -f docker/Dockerfile -t firmgraph .
+mkdir -p out
+# firmware mounted read-only; --network=none proves nothing phones home
+docker run --rm --network=none \
+  -v "$PWD/examples:/work:ro" -v "$PWD/out:/out" \
+  firmgraph scan /work/demo-firmware.tar -o /out
+open out/report.html
 ```
 
-## Quickstart
+The image ships a complete offline vulnerability database (it's large on purpose) —
+scan any real firmware the same way, fully offline.
+
+## Quickstart — local (no Docker)
 
 ```bash
-# local — scans the bundled example firmware (real findings: telnet-on, hardcoded key, root login)
+# needs syft + grype on PATH (and a grype DB: `grype db update` once); unblob runs via Docker
 uv sync
 uv run firmgraph scan examples/demo-firmware.tar -o out
 open out/report.html
-# (for a full CVE demo, scan a real image — e.g. an OpenWrt sysupgrade .bin from openwrt.org)
-
-# docker (recommended: air-gapped)
-docker build -f docker/Dockerfile -t firmgraph .
-docker run --rm --network=none -v "$PWD:/work" firmgraph scan /work/demo.bin -o /work/firmgraph_out
 ```
 
 ## Commands
