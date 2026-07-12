@@ -53,6 +53,16 @@
 {% endif %}
 {% endif %}
 
+{% if summary %}
+<h2>Summary</h2>
+<table>
+  <tr><th>Components</th><td>{{ summary.components }}</td></tr>
+  <tr><th>Findings</th><td>{{ summary.findings }} — <span class="sev-critical">{{ summary.critical }} critical</span> · <span class="sev-high">{{ summary.high }} high</span> · {{ summary.medium }} medium · {{ summary.low }} low</td></tr>
+  <tr><th>Act now (P1–P3)</th><td><strong>{{ summary.act_now }}</strong> &nbsp;·&nbsp; Backlog (P4–P5): {{ summary.backlog }}</td></tr>
+  <tr><th>Known-exploited (KEV)</th><td><strong>{{ summary.kev }}</strong> &nbsp;·&nbsp; No fix available (EOL): {{ summary.no_fix }}</td></tr>
+</table>
+{% endif %}
+
 {% if top_findings %}
 <h2>Top priorities — act on these first ({{ top_findings | length }})</h2>
 <table>
@@ -73,7 +83,24 @@
 </table>
 {% endif %}
 
-<h2>Findings ({{ findings | length }})</h2>
+{% if groups %}
+<h2>Findings by component</h2>
+<table>
+  <tr><th>Component</th><th>Findings</th><th>Critical</th><th>High</th><th>KEV</th><th>No fix</th></tr>
+  {% for g in groups %}
+  <tr>
+    <td>{{ g.component }}{% if g.flood %} <span title="version-match flood — see Honest Limits" style="color:#b06000;">⚠</span>{% endif %}</td>
+    <td>{{ g.total }}</td>
+    <td class="sev-critical">{{ g.critical or "" }}</td>
+    <td class="sev-high">{{ g.high or "" }}</td>
+    <td>{{ g.kev or "—" }}</td>
+    <td>{{ g.no_fix or "—" }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+<h2>All findings (showing {{ findings | length }} of {{ findings_total }}, by priority)</h2>
 {% if findings %}
 <table>
   <tr><th>ID</th><th>Priority</th><th>Severity</th><th>Component</th><th>Fix</th><th>KEV</th><th>EPSS</th><th>Reachable</th></tr>
@@ -90,6 +117,9 @@
   </tr>
   {% endfor %}
 </table>
+{% if findings_total > findings_cap %}
+<p style="color:#555;">…and {{ findings_total - findings_cap }} more — the complete, unabridged list is in <code>evidence-pack/findings.json</code> (the audit record).</p>
+{% endif %}
 {% else %}
 <p>No findings recorded by the current pipeline stages.</p>
 {% endif %}

@@ -24,8 +24,18 @@ class SbomStage(Stage):
             return [f"{self.engine.name} not available — no components cataloged"]
         root = ctx.work_dir / "extracted"
         components = self.engine.components(root)
-        # canonical ordering — determinism is a feature
-        ctx.components = sorted(components, key=lambda c: (c.name, c.version or ""))
+        # Dedup by identity: overlay filesystems (e.g. OpenWrt /rom) make the same
+        # package appear twice from two package-DB locations. Keep one per
+        # (name, version, type). Canonical ordering after — determinism is a feature.
+        seen: set[tuple[str, str, str]] = set()
+        deduped = []
+        for c in sorted(components, key=lambda c: (c.name, c.version or "", c.type)):
+            key = (c.name, c.version or "", c.type)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(c)
+        ctx.components = deduped
         syft_json = ctx.work_dir / "sbom" / "sbom.syft.json"
         if syft_json.is_file():
             ctx.sbom_path = syft_json

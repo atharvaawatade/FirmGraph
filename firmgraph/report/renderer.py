@@ -61,6 +61,78 @@ def _vex_summary(findings: list[Finding]) -> VexSummary:
     )
 
 
+FINDINGS_TABLE_CAP = 100  # long tail lives in evidence-pack/findings.json
+FLOOD_THRESHOLD = 50  # a component with more findings gets a noise caveat
+
+
+@dataclass(frozen=True)
+class Summary:
+    components: int
+    findings: int
+    critical: int
+    high: int
+    medium: int
+    low: int
+    act_now: int  # P1-P3
+    backlog: int  # P4-P5
+    kev: int
+    no_fix: int
+
+
+@dataclass(frozen=True)
+class ComponentGroup:
+    component: str
+    total: int
+    critical: int
+    high: int
+    kev: int
+    no_fix: int
+    top_priority: int
+    flood: bool
+
+
+def _summary(active: list[Finding], component_count: int) -> Summary:
+    def sev(s: str) -> int:
+        return sum(1 for f in active if f.severity == s)
+
+    return Summary(
+        components=component_count,
+        findings=len(active),
+        critical=sev("critical"),
+        high=sev("high"),
+        medium=sev("medium"),
+        low=sev("low"),
+        act_now=sum(1 for f in active if f.priority <= 3),
+        backlog=sum(1 for f in active if f.priority >= 4),
+        kev=sum(1 for f in active if f.kev),
+        no_fix=sum(1 for f in active if f.fix is None),
+    )
+
+
+def _group_by_component(active: list[Finding]) -> list[ComponentGroup]:
+    """Collapse thousands of findings into per-component rows — the kernel flood
+    becomes one honest line instead of 3000, sorted by what matters most."""
+    buckets: dict[str, list[Finding]] = {}
+    for f in active:
+        buckets.setdefault(f.component or "unknown", []).append(f)
+    groups = [
+        ComponentGroup(
+            component=comp,
+            total=len(fs),
+            critical=sum(1 for f in fs if f.severity == "critical"),
+            high=sum(1 for f in fs if f.severity == "high"),
+            kev=sum(1 for f in fs if f.kev),
+            no_fix=sum(1 for f in fs if f.fix is None),
+            top_priority=min(f.priority for f in fs),
+            flood=len(fs) > FLOOD_THRESHOLD,
+        )
+        for comp, fs in buckets.items()
+    ]
+    # most-actionable first: best priority, then KEV, then volume, then name
+    groups.sort(key=lambda g: (g.top_priority, -g.kev, -g.total, g.component))
+    return groups
+
+
 def render_html(ctx: ScanContext, manifest: ScanManifest) -> str:
     env = Environment(
         loader=FileSystemLoader(_TEMPLATES),
@@ -73,9 +145,13 @@ def render_html(ctx: ScanContext, manifest: ScanManifest) -> str:
         manifest=manifest,
         extraction=ctx.extraction,
         components=ctx.components,
-        findings=active,
+        summary=_summary(active, len(ctx.components)),
+        groups=_group_by_component(active),
+        findings=active[:FINDINGS_TABLE_CAP],
+        findings_total=len(active),
+        findings_cap=FINDINGS_TABLE_CAP,
         binscan_findings=binscan,
-        top_findings=[f for f in active if f.priority <= 3][:10],
+        top_findings=[f for f in active if f.priority <= 3][:25],
         suppressed=[f for f in ctx.findings if f.suppressed],
         vex=_vex_summary(ctx.findings),
         cra_rows=aggregate_mapping(ctx.findings),
@@ -115,7 +191,21 @@ def render_markdown(ctx: ScanContext, manifest: ScanManifest) -> str:
     active = [f for f in ctx.findings if not f.suppressed and f.source != "cve-bin-tool"]
     binscan = [f for f in ctx.findings if not f.suppressed and f.source == "cve-bin-tool"]
     suppressed = [f for f in ctx.findings if f.suppressed]
-    top = [f for f in active if f.priority <= 3][:10]
+
+    # -- executive summary: the firehose distilled to what a human reads first --
+    s = _summary(active, len(ctx.components))
+    lines += [
+        "## Summary",
+        "",
+        f"- **Components:** {s.components}",
+        f"- **Findings:** {s.findings}  (Critical {s.critical} · High {s.high} · "
+        f"Medium {s.medium} · Low {s.low})",
+        f"- **Act now (P1–P3):** {s.act_now}   ·   **Backlog (P4–P5):** {s.backlog}",
+        f"- **Known-exploited (KEV):** {s.kev}   ·   **No fix available (EOL):** {s.no_fix}",
+        "",
+    ]
+
+    top = [f for f in active if f.priority <= 3][:25]
     if top:
         lines += [f"## Top priorities — act on these first ({len(top)})", ""]
         for i, f in enumerate(top, 1):
@@ -128,13 +218,33 @@ def render_markdown(ctx: ScanContext, manifest: ScanManifest) -> str:
                 quoted = explanation.replace("\n", "\n   > ")
                 lines.append(f"   > _{ADVISORY_LABEL}:_ {quoted}")
         lines.append("")
-    lines += [f"## Findings ({len(active)})", ""]
-    for f in active:
+
+    # -- findings grouped by component: the kernel flood becomes one honest row --
+    groups = _group_by_component(active)
+    if groups:
+        lines += ["## Findings by component", ""]
+        for g in groups:
+            flag = " ⚠ version-match flood — see Honest Limits" if g.flood else ""
+            kev = f" · {g.kev} KEV" if g.kev else ""
+            lines.append(
+                f"- **{g.component}** — {g.total} findings "
+                f"(C:{g.critical} H:{g.high}{kev}, no-fix:{g.no_fix}){flag}"
+            )
+        lines.append("")
+
+    shown = active[:FINDINGS_TABLE_CAP]
+    lines += [f"## All findings (showing {len(shown)} of {len(active)}, by priority)", ""]
+    for f in shown:
         fix = f.fix or "**no fix available (EOL evidence)**"
         reach = " · reachable" if f.reachable is True else ""
         lines.append(
             f"- `{f.finding_id}` [P{f.priority}] [{f.severity}]{reach} "
             f"{f.component or ''} — fix: {fix}"
+        )
+    if len(active) > FINDINGS_TABLE_CAP:
+        lines.append(
+            f"\n> …and {len(active) - FINDINGS_TABLE_CAP} more — the complete, "
+            "unabridged list is in `evidence-pack/findings.json` (the audit record)."
         )
     if binscan:
         lines += [

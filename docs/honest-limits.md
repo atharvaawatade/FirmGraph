@@ -26,6 +26,26 @@ this page, this page wins and the README is a bug.
   against a newer DB can show new CVEs on unchanged firmware — `firmgraph diff` warns about
   this explicitly instead of letting you misread it as a firmware regression.
 
+## Linux kernel & version-matched CVE floods
+
+- Matching a component **by version** against the CVE database is honest but blunt. The Linux
+  kernel is the extreme case: a single `linux-kernel@6.6.73` matches **thousands** of CVEs,
+  because the kernel has thousands of known CVEs across drivers and subsystems — **most of which
+  are not compiled into a given firmware** and are not applicable.
+- V1 **does not** do kernel-config analysis, so it cannot rule these out per-CVE. What it does
+  instead, honestly:
+  - **groups** findings by component so the kernel is one row ("2950 findings ⚠"), not 2950 rows;
+  - **prioritizes** with KEV / EPSS / reachability so the few that matter float to the top;
+  - **caps** the flat findings list in the report (full set always in `evidence-pack/findings.json`).
+- **Read a big kernel CVE count as "this kernel version has N known CVEs," not "N things you must
+  fix."** Per-CVE applicability needs kernel-config analysis — a V0.2+ item.
+
+## Component de-duplication
+
+- Overlay filesystems (e.g. OpenWrt's `/rom`) expose the package database twice, so scanners see
+  every package twice. FirmGraph de-duplicates components and findings by identity — the counts
+  you see are unique, not inflated.
+
 ## Reachability
 
 - It is a **Linux-filesystem heuristic**: binaries in PATH-like dirs, libraries in lib dirs,

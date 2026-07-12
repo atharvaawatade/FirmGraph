@@ -27,6 +27,20 @@ class EnrichStage(Stage):
         if not ctx.findings:
             return ["no findings to enrich"]
 
+        # Dedup by identity first: overlay filesystems can double the same match.
+        # Never dedup across engines (source keeps grype/cve-bin-tool separate).
+        seen: set[tuple[str, str, str, str]] = set()
+        unique = []
+        for f in ctx.findings:
+            key = (f.finding_id, f.component or "", f.kind, f.source)
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(f)
+        if len(unique) != len(ctx.findings):
+            notes.append(f"deduped {len(ctx.findings) - len(unique)} duplicate findings")
+        ctx.findings = unique
+
         extracted = ctx.work_dir / "extracted"
         if extracted.is_dir():
             ctx.findings, reach_note = analyze_reachability(extracted, ctx.findings)

@@ -24,10 +24,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build image
-        run: docker build -f docker/Dockerfile -t firmgraph:ci .
-      - name: Egress test — scan must succeed with no network (nothing phones home)
+      - name: Build image (no baked DB — fast; example needs no CVE DB)
+        run: docker build -f docker/Dockerfile --build-arg BAKE_DB=false -t firmgraph:ci .
+      - name: Air-gapped + read-only test — scan the bundled example, nothing phones home
         run: |
-          python3 -c "import random; r=random.Random(42); open('demo.bin','wb').write(bytes(r.getrandbits(8) for _ in range(65536)))"
-          docker run --rm --network=none -v "$PWD:/work" firmgraph:ci scan /work/demo.bin -o /work/out -q
+          mkdir -p out
+          docker run --rm --network=none \
+            -v "$PWD/examples:/work:ro" -v "$PWD/out:/out" \
+            firmgraph:ci scan /work/demo-firmware.tar -o /out -q
           test -f out/report.html && test -f out/graph.json
+          test -f out/evidence-pack/vex.openvex.json
+          grep -q "FG-SECRET-001" out/report.md   # real checks findings, air-gapped, no DB

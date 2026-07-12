@@ -24,6 +24,14 @@
 - **Root cause:** no grype DB baked in the image; with `GRYPE_DB_AUTO_UPDATE=false` (determinism) + air-gapped, grype can't self-heal. Earlier "passing" runs only worked because a `/tmp/fg_cache` volume happened to hold a hand-updated DB. A real clone-and-run (the YC test) always failed CVE matching.
 - **Fix:** bake the grype vulnerability DB into the image at build time (`GRYPE_DB_CACHE_DIR=/opt/grype/db`, `grype db update` as root, readable by the unblob user). CVE matching now works air-gapped, zero setup. DB build date still recorded per-scan (determinism intact). Image ~2.8GB — the honest cost of a real offline promise.
 
+### 🔴 CRITICAL bug #2 — grype 5-day staleness fuse (found while fixing #1, fixed)
+- **Symptom:** grype hard-refuses any DB older than 5 days: `vulnerability database was built 5 days ago (max allowed age is 5 days)` → exit 1. With auto-update off (determinism) it can't self-heal.
+- **Why it's insidious:** the baked-DB fix (#1) would have worked at demo time and then **silently broken 5 days later** — every air-gapped scan failing. Exactly the failure that surfaces *after* a good YC demo. Also explains the host path failing (its DB was 5 days old).
+- **Fix:** `GRYPE_DB_VALIDATE_AGE=false` in the grype adapter — we deliberately pin a DB snapshot and record its date in the manifest, so grype must not refuse it by age. Offline promise is now durable, not a fuse. Verified: 5-day-old host DB → 122 findings.
+
+### 🟠 bug #3 — DB date recorded as "unknown" (fixed)
+- grype v6 moved the build date to `descriptor.db.status.built` (was `descriptor.db.built`). Our "determinism receipt" claim was silently false ("unknown"). Parser now reads the new path (+ old fallback). Verified: manifest shows `2026-07-06T07:49:14Z`. Regression test added.
+
 ### 🟠 A1 — Docs honesty: multiple broken/stale README commands (fixed)
 - `docker run --entrypoint grype firmgraph -v ... db update` — **flags after image name = broken docker syntax**; also referenced a non-existent `firmgraph` image and an unnecessary step. **Deleted** (DB now baked in).
 - Quickstart referenced `demo.bin` which no longer exists → now uses the bundled `examples/demo-firmware.tar`.

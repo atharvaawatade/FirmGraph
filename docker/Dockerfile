@@ -36,9 +36,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
 # keeps working past grype's 5-day staleness limit — offline for real, not a fuse.
 # This layer sits BEFORE the code layer so app changes don't re-download the DB.
 # The image is large on purpose — it carries a complete offline vulnerability DB.
+# BAKE_DB=true (default) ships the offline DB in the release image. CI builds
+# with --build-arg BAKE_DB=false for a fast, small image (tests use the bundled
+# example, which needs no CVE DB).
+ARG BAKE_DB=true
 ENV GRYPE_DB_CACHE_DIR=/opt/grype/db
 RUN mkdir -p /opt/grype/db \
-    && grype db update \
+    && if [ "$BAKE_DB" = "true" ]; then grype db update; fi \
     && chmod -R a+rX /opt/grype
 
 # cve-bin-tool pinned for reproducibility (our determinism ethos).

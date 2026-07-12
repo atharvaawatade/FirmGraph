@@ -2,7 +2,7 @@
 
 > **Version:** V0.1.0 · **As of:** July 2026 · under git (initial release commit)
 > **One line:** The open evidence layer for firmware — one local command turns a firmware image into a reproducible, prioritized, CRA-mapped evidence pack.
-> **Health:** 62 tests passing · ruff clean · mypy --strict clean · 51 modules · Docker image runs fully air-gapped (incl. read-only firmware mounts).
+> **Health:** 63 tests passing · ruff clean · mypy --strict clean · 51 modules · Docker image runs fully air-gapped (incl. read-only firmware mounts) with the **grype vulnerability DB baked in** — CVE matching works offline, zero setup (~3.2GB image, the honest cost of a real offline promise).
 > **Clone-and-run:** bundled `examples/demo-firmware.tar` produces 5 real findings on first scan (verified from a fresh `git archive` clone).
 > **Honesty rule:** every row below is marked ✅ working / 🟡 optional-gated / 🔧 tracked. No feature is claimed that isn't real. If this contradicts a slide, this doc wins.
 
@@ -17,7 +17,7 @@ One command — `firmgraph scan <image>` — runs 10 stages, each recording its 
 | 1 | **ingest** | SHA-256, format detect, stable scan id | ✅ |
 | 2 | **extract** | unblob → binwalk fallback, in a security **jail** (path-traversal / symlink-escape / decompression-bomb guards), honest **confidence score** | ✅ |
 | 3 | **sbom** | Syft — components with **provenance + confidence**; CycloneDX + SPDX export | ✅ |
-| 4 | **detect** | Grype — CVE matching, **pinned DB snapshot** (determinism), EOL/no-fix surfaced as evidence | ✅ |
+| 4 | **detect** | Grype — CVE matching, **DB baked into the image** (works air-gapped, zero setup; age-check disabled so the pinned snapshot never expires), build date in every manifest, EOL/no-fix surfaced as evidence | ✅ |
 | 4a | **binscan** | cve-bin-tool second engine (binary signatures), shown separately, never merged | 🔧 integration done; tool v3.4 crashes → **gracefully skipped**, 0 findings (tracked) |
 | 5 | **checks** | secrets / weak-config rules (telnet, root-login, world-writable), **redaction by default** | ✅ engine tested; live-positive on a real image tracked |
 | 6 | **enrich** | KEV + EPSS + reachability heuristic → **deterministic priority ranking** with reasons; suppression applied | ✅ |
