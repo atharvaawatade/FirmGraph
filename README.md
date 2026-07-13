@@ -33,38 +33,50 @@ Template-Method class (`firmgraph/stages/`) that records its own provenance into
 Data flows through a mutable `ScanContext`. Determinism comes from content-addressing + pinned
 tools, not from executor cleverness.
 
+**In plain terms:** think of it as a **home inspection for firmware**. We fingerprint the box, open
+it up, make an inventory of everything inside, check each item against a list of known problems,
+look for anything dangerous left lying around (keys under the doormat, doors left unlocked), sort
+the problems from *"fix this now"* to *"noted for later"*, and hand you a signed inspection folder.
+
 ```
- image
+ image  ── the firmware file, e.g. a router update  router-fw-v1.2.bin
    │
- [1] ingest    SHA-256 + format sniff (magic bytes) → stable scan id
+ [1] ingest    Fingerprint the file (SHA-256) + detect its type → give the scan a name
+   │           ↳ plain words: "what exactly is this, and let's label it so we can compare later"
    │
- [2] extract   unblob (primary) → binwalk (fallback), inside a security JAIL
-   │           → confidence = unblob's chunk-identification ratio (surfaced, never hidden)
+ [2] extract   Open the box: unblob (main) → binwalk (backup), inside a safety JAIL
+   │           ↳ plain words: "unpack the firmware into its files — and say honestly how much we
+   │             actually got out (94%? or only 1% because it's encrypted?)"
    │
- [3] sbom      Syft catalogs components (pkg-DB + binary signatures) → dedup by identity
-   │           → CycloneDX + SPDX + syft-json written
+ [3] sbom      Make an inventory list of every ingredient inside (Syft) — no duplicates
+   │           ↳ plain words: "what software is in here? e.g. OpenSSL 1.0.2u, BusyBox, curl…"
    │
- [4] detect    Grype matches SBOM → CVEs (baked offline DB); KEV + EPSS ride in;
-   │           EOL "no fix available" preserved as first-class evidence
+ [4] detect    Check each ingredient against the 'known problems' list (Grype + built-in DB)
+   │           ↳ plain words: "which of these have publicly-known security holes (CVEs)? and which
+   │             are so old there's no fix at all?"
    │
- [4a] binscan  cve-bin-tool second engine (binary signatures) — SEE LIMITS: currently
-   │           crashes upstream → gracefully skipped, 0 findings, never a failure
+ [4a] binscan  A second inspector double-checks unlabeled items (cve-bin-tool)
+   │           ↳ plain words: "backup checker — currently out of order, so we skip it and say so"
    │
- [5] checks    YAML rulepack: hardcoded keys / telnet-on / root-login / world-writable
-   │           → secrets REDACTED by default (sha256 prefix only)
+ [5] checks    Look for dangerous things left lying around (secrets, telnet on, root login open)
+   │           ↳ plain words: "any passwords/keys hardcoded in the box? any doors left unlocked?"
+   │             (we blank out the actual secret — the report never leaks it)
    │
- [6] enrich    dedup findings → reachability heuristic → suppression → deterministic ranking
-   │           (KEV > EPSS≥10% > reachable+severe > severe > rest), each with a stated reason
+ [6] enrich    Sort the problems: which are actually dangerous vs. only theoretical
+   │           ↳ plain words: "of 3000 issues, these 9 are being exploited in the wild RIGHT NOW —
+   │             start here. the rest are background noise."
    │
- [6a] explain  optional LiteLLM AI explainer — off without a key, NEVER decides true/false-positive
+ [6a] explain  Optional: a plain-English note on each top problem (AI, only if you add a key)
+   │           ↳ plain words: "why does this matter and what should I check?" — never a verdict
    │
- [7] graph     content-addressed nodes/edges in SQLite (node id = hash of canonical content)
+ [7] graph     File everything in a system that remembers (so we can compare v1.2 vs v1.3 later)
+   │           ↳ plain words: "the tool has a memory — next release, it tells you what changed"
    │
- [8] report    HTML + Markdown: exec summary, per-component grouping, top-N cap,
-   │           CRA Annex I table, VEX summary
+ [8] report    Write the inspection report (a web page + text): summary first, details after
+   │           ↳ plain words: "the thing you actually show your boss or an auditor"
    │
- [9] export    CycloneDX/SPDX/graph.json + evidence-pack/ (manifest, findings, cra-mapping,
-                VEX ×2, README)
+ [9] export    Hand over the evidence folder (SBOM, findings, CRA map, VEX — you sign it)
+                ↳ plain words: "the audit-ready pack — we prepared it; you review and sign"
 ```
 
 ### [1] ingest — identity
