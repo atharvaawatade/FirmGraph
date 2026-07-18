@@ -10,7 +10,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from firmgraph.enrich import analyze_reachability, rank_findings
+from firmgraph.enrich import (
+    analyze_elf_linkage,
+    analyze_kernel_config,
+    analyze_reachability,
+    analyze_service_exposure,
+    rank_findings,
+)
 from firmgraph.pipeline.context import ScanContext
 from firmgraph.stages.base import Stage
 from firmgraph.triage.suppression import SuppressionEngine, default_suppressions_path
@@ -41,17 +47,34 @@ class EnrichStage(Stage):
             notes.append(f"deduped {len(ctx.findings) - len(unique)} duplicate findings")
         ctx.findings = unique
 
+        network_exposed: frozenset[str] = frozenset()
         extracted = ctx.work_dir / "extracted"
         if extracted.is_dir():
             ctx.findings, reach_note = analyze_reachability(extracted, ctx.findings)
             notes.append(reach_note)
+            # Rung 2: refine library reachability by REAL dynamic linkage — a present
+            # library that no executable loads is downgraded, with the load closure
+            # as the evidence. Runs after the presence heuristic, overriding it.
+            ctx.findings, elf_note = analyze_elf_linkage(extracted, ctx.findings)
+            notes.append(elf_note)
+            # Rung 4: the remote attack surface — network-facing services that are
+            # actually started at boot. Their findings are promoted in ranking.
+            ctx.findings, svc_note, network_exposed = analyze_service_exposure(
+                extracted, ctx.findings
+            )
+            notes.append(svc_note)
+            # The moat: kill the kernel version-match flood with proof from the
+            # kernel's own build config, BEFORE ranking, so absent-subsystem CVEs
+            # sink and flow to VEX as not_affected with the config line attached.
+            ctx.findings, kcfg_note = analyze_kernel_config(extracted, ctx.findings)
+            notes.append(kcfg_note)
 
         engine = SuppressionEngine(self.suppressions_path)
         ctx.findings, hits = engine.apply(ctx.findings)
         if hits:
             notes.append(f"suppressed={hits} (rules: {self.suppressions_path})")
 
-        ctx.findings = rank_findings(ctx.findings)
+        ctx.findings = rank_findings(ctx.findings, network_exposed)
         active = [f for f in ctx.findings if not f.suppressed]
         tiers = {p: sum(1 for f in active if f.priority == p) for p in (1, 2, 3, 4, 5)}
         notes.append(

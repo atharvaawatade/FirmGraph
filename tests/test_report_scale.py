@@ -11,6 +11,7 @@ from firmgraph.models import Component, Finding
 from firmgraph.report.renderer import (
     FINDINGS_TABLE_CAP,
     _group_by_component,
+    _noise_kill,
     _summary,
 )
 from firmgraph.scanner import Scanner
@@ -63,6 +64,25 @@ def test_grouping_orders_by_actionability() -> None:
     assert groups[0].component == "openssl@1", "most-actionable component first"
 
 
+def test_noise_kill_headline_counts() -> None:
+    findings = _kernel_flood(100)
+    # config-analysis rules out 60 of them, each with a proof reason
+    reason = (
+        "kernel-config: GPU/DRM not compiled into this kernel "
+        "(# CONFIG_DRM is not set; source: proc/config.gz)"
+    )
+    findings = [
+        f.model_copy(update={"suppressed": True, "suppression_reason": reason})
+        for f in findings[:60]
+    ] + findings[60:]
+    nk = _noise_kill(findings)
+    assert nk.raw == 100
+    assert nk.suppressed == 60 and nk.by_config == 60 and nk.by_rule == 0
+    assert nk.signal == 40
+    assert nk.reduction_pct == 60
+    assert len(nk.config_samples) == 3, "a few proofs are surfaced, not all 60"
+
+
 class FloodMatcher:
     name = "stub-flood"
 
@@ -86,6 +106,7 @@ def test_report_caps_flat_list_but_pack_keeps_all(tmp_path: Path) -> None:
     ).scan(image, out_dir=out, quiet=True)
 
     md = (out / "report.md").read_text(encoding="utf-8")
+    assert "## The noise-kill — firehose → signal" in md
     assert "## Summary" in md
     assert "## Findings by component" in md
     assert f"showing {FINDINGS_TABLE_CAP} of 250" in md

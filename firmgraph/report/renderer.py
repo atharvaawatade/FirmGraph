@@ -63,6 +63,41 @@ def _vex_summary(findings: list[Finding]) -> VexSummary:
 
 FINDINGS_TABLE_CAP = 100  # long tail lives in evidence-pack/findings.json
 FLOOD_THRESHOLD = 50  # a component with more findings gets a noise caveat
+SUPPRESSED_TABLE_CAP = 50  # the full suppressed set stays in evidence-pack/findings.json
+
+
+@dataclass(frozen=True)
+class NoiseKill:
+    """The signature story: raw firehose -> ruled out WITH PROOF -> the signal that
+    actually matters. This is the number that separates us from a scanner dump."""
+
+    raw: int  # all SBOM/CVE-path findings detected (active + suppressed)
+    signal: int  # what's left to act on
+    suppressed: int  # ruled out on this path
+    by_config: int  # ruled out by kernel-config analysis (with the config line as proof)
+    by_rule: int  # ruled out by review/suppression rules
+    reduction_pct: int  # suppressed / raw, rounded
+    config_samples: tuple[str, ...]  # up to 3 sample proofs
+
+
+def _noise_kill(findings: list[Finding]) -> NoiseKill:
+    path = [f for f in findings if f.source != "cve-bin-tool"]
+    raw = len(path)
+    supp = [f for f in path if f.suppressed]
+    by_config = [f for f in supp if f.suppression_reason.startswith("kernel-config:")]
+    samples = tuple(
+        f"{f.finding_id} ({f.component or '—'}) — {f.suppression_reason}"
+        for f in by_config[:3]
+    )
+    return NoiseKill(
+        raw=raw,
+        signal=raw - len(supp),
+        suppressed=len(supp),
+        by_config=len(by_config),
+        by_rule=len(supp) - len(by_config),
+        reduction_pct=round(len(supp) / raw * 100) if raw else 0,
+        config_samples=samples,
+    )
 
 
 @dataclass(frozen=True)
@@ -141,10 +176,12 @@ def render_html(ctx: ScanContext, manifest: ScanManifest) -> str:
     template = env.get_template("report.html.j2")
     active = [f for f in ctx.findings if not f.suppressed and f.source != "cve-bin-tool"]
     binscan = [f for f in ctx.findings if not f.suppressed and f.source == "cve-bin-tool"]
+    suppressed_all = [f for f in ctx.findings if f.suppressed]
     return template.render(
         manifest=manifest,
         extraction=ctx.extraction,
         components=ctx.components,
+        noise=_noise_kill(ctx.findings),
         summary=_summary(active, len(ctx.components)),
         groups=_group_by_component(active),
         findings=active[:FINDINGS_TABLE_CAP],
@@ -152,7 +189,9 @@ def render_html(ctx: ScanContext, manifest: ScanManifest) -> str:
         findings_cap=FINDINGS_TABLE_CAP,
         binscan_findings=binscan,
         top_findings=[f for f in active if f.priority <= 3][:25],
-        suppressed=[f for f in ctx.findings if f.suppressed],
+        suppressed=suppressed_all[:SUPPRESSED_TABLE_CAP],
+        suppressed_total=len(suppressed_all),
+        suppressed_cap=SUPPRESSED_TABLE_CAP,
         vex=_vex_summary(ctx.findings),
         cra_rows=aggregate_mapping(ctx.findings),
         cra_disclaimer=MAPPING_DISCLAIMER,
@@ -191,6 +230,28 @@ def render_markdown(ctx: ScanContext, manifest: ScanManifest) -> str:
     active = [f for f in ctx.findings if not f.suppressed and f.source != "cve-bin-tool"]
     binscan = [f for f in ctx.findings if not f.suppressed and f.source == "cve-bin-tool"]
     suppressed = [f for f in ctx.findings if f.suppressed]
+
+    # -- the noise-kill headline: firehose -> ruled out WITH PROOF -> signal ----
+    nk = _noise_kill(ctx.findings)
+    if nk.raw:
+        lines += [
+            "## The noise-kill — firehose → signal",
+            "",
+            f"- **Detected:** {nk.raw} findings",
+            f"- **Ruled out with proof:** {nk.suppressed} "
+            f"({nk.by_config} by kernel-config analysis, {nk.by_rule} by review rules)",
+            f"- **Signal you act on:** **{nk.signal}**",
+        ]
+        if nk.suppressed:
+            lines.append(
+                f"- **Noise removed: {nk.reduction_pct}%** — every ruled-out finding is "
+                "kept in the report with its reason, never deleted"
+            )
+        lines.append("")
+        if nk.config_samples:
+            lines += ["_Sample proof — why these could be ruled out:_", ""]
+            lines += [f"- `{s}`" for s in nk.config_samples]
+            lines.append("")
 
     # -- executive summary: the firehose distilled to what a human reads first --
     s = _summary(active, len(ctx.components))
@@ -288,10 +349,22 @@ def render_markdown(ctx: ScanContext, manifest: ScanManifest) -> str:
                 f"{sample}{more}"
             )
     if suppressed:
-        lines += ["", f"## Suppressed findings ({len(suppressed)}) — marked, never deleted", ""]
-        for f in suppressed:
+        shown_supp = suppressed[:SUPPRESSED_TABLE_CAP]
+        lines += [
+            "",
+            f"## Suppressed findings (showing {len(shown_supp)} of {len(suppressed)}) "
+            "— marked, never deleted",
+            "",
+        ]
+        for f in shown_supp:
             lines.append(
                 f"- `{f.finding_id}` {f.component or ''} — suppressed: {f.suppression_reason}"
+            )
+        if len(suppressed) > SUPPRESSED_TABLE_CAP:
+            lines.append(
+                f"\n> …and {len(suppressed) - SUPPRESSED_TABLE_CAP} more suppressed "
+                "findings — the complete set (with reasons) is in "
+                "`evidence-pack/findings.json`."
             )
     lines += ["", f"## Components ({len(ctx.components)})", ""]
     for c in ctx.components:

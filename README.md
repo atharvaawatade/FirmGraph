@@ -133,13 +133,20 @@ only its location + a sha256 prefix. Binaries are never content-scanned.
 
 ### [6] enrich — turning the firehose into a short list
 1. **Dedup** findings by `(cve, component, kind, source)`.
-2. **Reachability** (`firmgraph/enrich/reachability.py`): a **Linux-filesystem heuristic** — is the
-   component's binary in a PATH dir, its lib in a lib dir, or referenced in an init/systemd file?
-   Labeled as a heuristic; **NOT APPLICABLE** (silent) on RTOS/monolithic images.
-3. **Suppression** (`firmgraph/triage/`): shareable YAML rules; marking a false positive is
+2. **Reachability ladder** — each layer speaks only where it has evidence, silent otherwise:
+   - *filesystem presence* (`enrich/reachability.py`) — binary in a PATH dir, lib in a lib dir, or
+     referenced in init/systemd;
+   - *ELF dynamic linkage* (`enrich/elf_reachability.py`) — parses `DT_NEEDED`/`DT_SONAME`, builds
+     the load closure; a library present but linked by **nothing** is downgraded;
+   - *service exposure* (`enrich/service_exposure.py`) — a vulnerable component that's a network
+     daemon **started at boot** is the remote attack surface, promoted in ranking.
+3. **Kernel-config filter** (`enrich/kernel_config.py`) — the noise-killer: reads the kernel's build
+   config and marks CVEs in **provably-absent subsystems** `not_affected` with the config line as
+   proof (collapses the kernel version-match flood).
+4. **Suppression** (`firmgraph/triage/`): shareable YAML rules; marking a false positive is
    remembered locally and captured as a TP/FP label (never transmitted).
-4. **Ranking** (`firmgraph/enrich/ranking.py`), deterministic tiers each with a reason:
-   `P1 KEV > P2 EPSS≥10% or direct-evidence > P3 reachable+severe > P4 severe > P5 rest`.
+5. **Ranking** (`firmgraph/enrich/ranking.py`), deterministic tiers each with a reason:
+   `P1 KEV > P2 EPSS≥10% or direct-evidence > P3 reachable/network-exposed+severe > P4 severe > P5 rest`.
 
 ### [6a] explain — optional AI, explainer never judge
 `LiteLLM` (`firmgraph/triage/explainer.py`), BYO key. It writes plain-English "why it matters /
@@ -212,13 +219,16 @@ FirmGraph is deliberately transparent — this is the credibility, not a disclai
 1. **cve-bin-tool (second engine) produces 0 findings** — v3.4 crashes upstream; we handle it as a
    clean skip. Real second-engine coverage is a tracked V0.2 item.
 2. **Kernel / version-match floods** — matching `linux-kernel@6.6.73` pulls in **thousands** of
-   CVEs, most for drivers not compiled into the image. V1 can't rule them out per-CVE (no
-   kernel-config analysis). We **group + prioritize + cap** them and say so. Read a big kernel
-   count as "this version has N known CVEs," not "N things to fix."
+   CVEs, most for drivers not compiled in. FirmGraph reads the kernel's **build config** and rules
+   out CVEs in provably-absent subsystems (with the config line as proof) — but **only on positive
+   proof**, and only when the image ships a readable config; otherwise it groups + prioritizes +
+   caps and says so. Read a big *raw* kernel count as "N known CVEs," not "N things to fix."
 3. **SBOM binary identification is partial** — Syft names components with package metadata or known
    binary signatures; unidentified stripped binaries are a **false-negative surface** we don't hide.
-4. **Reachability is a crude heuristic** — Linux-filesystem only; misses `dlopen`/proprietary
-   launchers; not applicable to RTOS/monolithic images.
+4. **Reachability is a layered heuristic, not proof** — filesystem presence + ELF dynamic linkage
+   (`DT_NEEDED`) + network-service exposure; misses `dlopen`/proprietary launchers and static
+   linkage; not applicable to RTOS/monolithic images. Call-graph / taint reachability is a later
+   rung — not claimed today.
 5. **checks rulepack v1 is small** — a handful of high-confidence rules; zero findings on a clean
    image is intended, not thoroughness.
 6. **CRA mapping is best-effort, rule-based** — harmonized standards aren't final; it's evidence
@@ -236,7 +246,9 @@ the release audit that found real bugs: [AUDIT.md](AUDIT.md).
 - **Reproducible**: same image + same tool versions + same DB snapshot → identical content-addressed
   graph. `tests/test_determinism.py` is the promise as code (green in CI on every commit).
 - **Local-first**: a CI test runs a full scan under `--network=none` and asserts it succeeds. The
-  open tool sends nothing anywhere; suppression labels are captured locally only.
+  open tool sends nothing anywhere; suppression labels are captured locally only. Don't take our
+  word for it — run [`./prove-zero-egress.sh`](prove-zero-egress.sh) for three independent proofs
+  (see [docs/zero-egress.md](docs/zero-egress.md)).
 - **Honest**: low extraction confidence → red banner; a broken engine → labeled skip; every
   artifact carries the liability line.
 

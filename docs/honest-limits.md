@@ -29,16 +29,26 @@ this page, this page wins and the README is a bug.
 ## Linux kernel & version-matched CVE floods
 
 - Matching a component **by version** against the CVE database is honest but blunt. The Linux
-  kernel is the extreme case: a single `linux-kernel@6.6.73` matches **thousands** of CVEs,
-  because the kernel has thousands of known CVEs across drivers and subsystems — **most of which
-  are not compiled into a given firmware** and are not applicable.
-- V1 **does not** do kernel-config analysis, so it cannot rule these out per-CVE. What it does
-  instead, honestly:
-  - **groups** findings by component so the kernel is one row ("2950 findings ⚠"), not 2950 rows;
-  - **prioritizes** with KEV / EPSS / reachability so the few that matter float to the top;
-  - **caps** the flat findings list in the report (full set always in `evidence-pack/findings.json`).
-- **Read a big kernel CVE count as "this kernel version has N known CVEs," not "N things you must
-  fix."** Per-CVE applicability needs kernel-config analysis — a V0.2+ item.
+  kernel is the extreme case: a single `linux-kernel@6.6.73` matches **thousands** of CVEs
+  across drivers and subsystems — **most of which are not compiled into a given firmware.**
+- FirmGraph does **kernel-config-aware filtering** (the noise-killer): it reads the kernel's own
+  build config from the image (`/proc/config.gz`, `boot/config-*`, `.config`) and marks CVEs in
+  **provably-absent subsystems** as `not_affected` — with the exact config line as proof (e.g.
+  `# CONFIG_BT is not set`). A headless router's Bluetooth / GPU / exotic-filesystem CVEs collapse
+  to the handful that are actually applicable. Grouping, prioritization, and the capped list still
+  apply on top.
+- **Its honest limits — it deliberately under-suppresses rather than over-suppress:**
+  - **No config, no suppression.** If the image ships no readable kernel config (it requires
+    `CONFIG_IKCONFIG_PROC` or a distro `boot/config`), the filter is **NOT APPLICABLE** and every
+    kernel CVE stays active. It never guesses.
+  - **Positive proof only** — an explicit `# CONFIG_X is not set`, or absence from a *complete*
+    config (≥50 "is not set" lines). Any ambiguity keeps the finding.
+  - **CVE→subsystem mapping is conservative** — it keys on source-path fragments / names that
+    modern kernel CVE descriptions carry (`drivers/gpu/drm`, `fs/xfs`, `net/bluetooth`). A CVE
+    whose description carries no such signal is **not** suppressed (kept, never falsely cleared).
+  - It says nothing about CVEs in subsystems that **are** compiled in — those remain, ranked.
+- **Read a big *raw* kernel CVE count as "this version has N known CVEs," not "N things to fix."**
+  After config filtering, the applicable set is what the report leads with.
 
 ## Component de-duplication
 
@@ -46,16 +56,29 @@ this page, this page wins and the README is a bug.
   every package twice. FirmGraph de-duplicates components and findings by identity — the counts
   you see are unique, not inflated.
 
-## Reachability
+## Reachability (a ladder of signals, each stated honestly)
 
-- It is a **Linux-filesystem heuristic**: binaries in PATH-like dirs, libraries in lib dirs,
-  names referenced in init/systemd files. That's all.
-- It **misses** `dlopen()`-style loading and proprietary launchers, by design.
-- On RTOS/monolithic images (no Linux markers) it reports **NOT APPLICABLE** — silence,
-  not false reassurance.
-- On small systems where every vulnerable component is core systemware (busybox, openssl),
-  everything is reachable and the signal discriminates weakly. It earns its keep on richer
-  filesystems.
+Reachability is layered. Each layer speaks **only where it has evidence** and defaults to silence
+otherwise — a crude true signal beats a confident false one.
+
+- **Filesystem presence** (baseline): binaries in PATH-like dirs, libraries in lib dirs, names in
+  init/systemd files. Misses `dlopen()` and proprietary launchers by design. No Linux markers
+  (RTOS/monolithic) → **NOT APPLICABLE**.
+- **ELF dynamic linkage** (Rung 2): parses `DT_NEEDED` / `DT_SONAME` and builds the transitive
+  load closure from the executables; a library **present but linked by nothing** is downgraded to
+  `reachable=False` (→ VEX `under_investigation`, never `not_affected` — a heuristic is not proof).
+  *Limits:* invisible to `dlopen()`; statically-linked code has no `DT_NEEDED`, so we make **no
+  claim** about it; needs pyelftools + at least one ELF, else NOT APPLICABLE.
+- **Service exposure** (Rung 4): the remote attack surface — components that are known network
+  daemons **and** actually started at boot are promoted in ranking. *Limits:* **name-based** (misses
+  a service fronted by a busybox applet or a renamed binary); **upgrade-only** by design (it never
+  downgrades, because a service can be launched by a supervisor we don't parse); needs an init
+  system, else NOT APPLICABLE.
+- On small systems where every vulnerable component is core systemware (busybox, openssl), the
+  signal still discriminates weakly — it earns its keep on richer filesystems.
+- **Not yet built:** call-graph and taint/symbolic reachability (does attacker-controlled input
+  actually reach the vulnerable function?). Tracked as later rungs — we do **not** claim
+  function-level reachability today.
 
 ## Second scan engine (cve-bin-tool)
 
