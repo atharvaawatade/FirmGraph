@@ -1,0 +1,37 @@
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - name: Sync dependencies
+        run: uv sync --dev
+      - name: Lint
+        run: uv run ruff check firmgraph tests
+      - name: Type-check
+        run: uv run mypy firmgraph
+      - name: Tests (incl. determinism acid test)
+        run: uv run pytest -q
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image (no baked DB — fast; example needs no CVE DB)
+        run: docker build -f docker/Dockerfile --build-arg BAKE_DB=false -t firmgraph:ci .
+      - name: Air-gapped + read-only test — scan the bundled example, nothing phones home
+        run: |
+          mkdir -p out
+          docker run --rm --network=none \
+            -v "$PWD/examples:/work:ro" -v "$PWD/out:/out" \
+            firmgraph:ci scan /work/demo-firmware.tar -o /out -q
+          test -f out/report.html && test -f out/graph.json
+          test -f out/evidence-pack/vex.openvex.json
+          grep -q "FG-SECRET-001" out/report.md   # real checks findings, air-gapped, no DB

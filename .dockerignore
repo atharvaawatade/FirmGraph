@@ -1,0 +1,20 @@
+# Keep the Docker build context small and clean.
+.git
+.venv
+__pycache__/
+*.pyc
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+out/
+firmgraph_out/
+docker_out/
+*.db
+*.db-wal
+*.db-shm
+demo.bin
+gate-results.md
+.DS_Store
+dist/
+build/
+*.egg-info/
