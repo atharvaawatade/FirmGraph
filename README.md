@@ -1,13 +1,69 @@
-# FirmGraph
+# 🛡️ FirmGraph
 
-**The open evidence layer for firmware.** One local command turns a firmware image into a
-reproducible security graph, prioritized findings, a CRA-mapped evidence pack, and a VEX
-document. Your firmware never leaves the machine.
+### The open evidence layer for firmware security
 
-FirmGraph does **not** reinvent scanning — it orchestrates the best open-source firmware tools
-(unblob, Syft, Grype) and adds the layer they don't have: **de-duplication, prioritization,
-honest confidence, reproducibility, a diff between releases, CRA Annex I mapping, and a signed-off
-evidence pack.** Scanning is commoditized; trustworthy evidence is the point.
+[![CI](https://github.com/atharvaawatade/FirmGraph/actions/workflows/ci.yml/badge.svg)](https://github.com/atharvaawatade/FirmGraph/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.12%2B-3776AB.svg?logo=python&logoColor=white)](pyproject.toml)
+[![Air-gapped](https://img.shields.io/badge/design-air--gapped-0B6E4F.svg)](docs/zero-egress.md)
+[![Tests](https://img.shields.io/badge/tests-86%20passing-2EA44F.svg)](tests/)
+
+**One local command turns a firmware image into a reproducible security graph, prioritized
+findings, SBOMs, CRA-mapped evidence, and VEX documents. Your firmware never leaves the machine.**
+
+FirmGraph orchestrates proven open-source tools—**unblob, Syft, and Grype**—then adds the evidence
+layer they do not provide: deduplication, reachability analysis, honest confidence, deterministic
+prioritization, release diffs, CRA Annex I mapping, and an audit-ready evidence pack.
+
+> 💡 **The simple idea:** scanning tells you what might be wrong; FirmGraph helps you prove what
+> matters, why it matters, and what changed.
+
+## ✨ Why FirmGraph
+
+| 🔍 Discover | 🎯 Prioritize | 📦 Prove |
+|---|---|---|
+| Safely extract hostile firmware and build a provenance-rich SBOM | Reduce thousands of version matches to an explainable action list | Export deterministic reports, VEX, CRA mapping, and complete evidence |
+| Detect CVEs, secrets, insecure services, and weak configuration | Use KEV, EPSS, ELF linkage, service exposure, and kernel config | Compare releases with content-addressed graph data |
+
+## 🗺️ End-to-end flow
+
+```mermaid
+flowchart LR
+    A[📦 Firmware image] --> B[🔐 Ingest & fingerprint]
+    B --> C[🧰 Jailed extraction]
+    C --> D[📋 SBOM]
+    C --> E[🕵️ Secrets & config checks]
+    D --> F[🧬 CVE detection]
+    F --> G[🎯 Reachability & ranking]
+    E --> G
+    G --> H[(🗃️ Content-addressed graph)]
+    H --> I[📊 HTML / Markdown report]
+    H --> J[📁 Evidence pack]
+    J --> K[✅ SBOM · VEX · CRA mapping]
+```
+
+## 🚀 Try it now
+
+```bash
+git clone https://github.com/atharvaawatade/FirmGraph.git
+cd FirmGraph
+
+# Run the bundled offline demo
+./demo.sh
+
+# Or scan your own firmware through Docker
+mkdir -p out
+docker build -t firmgraph .
+docker run --rm --network=none \
+  -v "$PWD:/work:ro" -v "$PWD/out:/out" \
+  firmgraph scan /work/firmware.bin -o /out
+```
+
+Outputs include an HTML report, Markdown report, complete findings, SBOMs, graph data, CRA
+mapping, and OpenVEX/CycloneDX VEX documents. See [Quickstart](#quickstart) for more options.
+
+> 🔒 **Privacy by design:** the recommended scan is read-only and network-disabled. Secrets are
+> redacted from findings, and the optional AI explainer is off by default.
 
 > **This README is written to be verifiable, not aspirational.** Every claim below maps to a stage,
 > a tool, or a test. The [Honest limitations](#honest-limitations-read-this) section is not
