@@ -8,6 +8,10 @@
 [![Air-gapped](https://img.shields.io/badge/design-air--gapped-0B6E4F.svg)](docs/zero-egress.md)
 [![Tests](https://img.shields.io/badge/tests-86%20passing-2EA44F.svg)](tests/)
 
+<p align="center">
+  <img src="assets/firmgraph-hero-animated.gif" alt="Animated firmware hardware flowing through a protected security graph into evidence reports" width="100%" />
+</p>
+
 **One local command turns a firmware image into a reproducible security graph, prioritized
 findings, SBOMs, CRA-mapped evidence, and VEX documents. Your firmware never leaves the machine.**
 
@@ -18,6 +22,13 @@ prioritization, release diffs, CRA Annex I mapping, and an audit-ready evidence 
 > 💡 **The simple idea:** scanning tells you what might be wrong; FirmGraph helps you prove what
 > matters, why it matters, and what changed.
 
+<p align="center">
+  <a href="#try-it">Try it now</a>&nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="#pipeline">See the pipeline</a>&nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="#quickstart">Read the full quickstart</a>&nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="docs/honest-limits.md">Know the limits</a>
+</p>
+
 ## ✨ Why FirmGraph
 
 | 🔍 Discover | 🎯 Prioritize | 📦 Prove |
@@ -25,7 +36,22 @@ prioritization, release diffs, CRA Annex I mapping, and an audit-ready evidence 
 | Safely extract hostile firmware and build a provenance-rich SBOM | Reduce thousands of version matches to an explainable action list | Export deterministic reports, VEX, CRA mapping, and complete evidence |
 | Detect CVEs, secrets, insecure services, and weak configuration | Use KEV, EPSS, ELF linkage, service exposure, and kernel config | Compare releases with content-addressed graph data |
 
+## 📦 What a scan gives you
+
+| For engineering | For security | For audit & compliance |
+|---|---|---|
+| Component inventory, release diff, full findings JSON | CVEs, secret/config checks, exposure signals, ranked remediation | Manifest, SBOM, OpenVEX, CycloneDX VEX, CRA Annex I mapping |
+| Answers: *What changed?* | Answers: *What should we fix first?* | Answers: *What evidence do we have?* |
+
+<a id="pipeline"></a>
+
 ## 🗺️ End-to-end flow
+
+<p align="center">
+  <img src="assets/pipeline-motion.svg" alt="Animated FirmGraph pipeline from firmware to evidence pack" width="100%" />
+</p>
+
+<p align="center"><sub>Animated data flow: each stage records provenance, so results remain explainable and reproducible.</sub></p>
 
 ```mermaid
 flowchart LR
@@ -41,6 +67,8 @@ flowchart LR
     H --> J[📁 Evidence pack]
     J --> K[✅ SBOM · VEX · CRA mapping]
 ```
+
+<a id="try-it"></a>
 
 ## 🚀 Try it now
 
